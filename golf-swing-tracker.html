@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golf Swing Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .camera-section {
+            flex: 2;
+            position: relative;
+            background: #1a1a1a;
+            border-right: 2px solid #444;
+        }
+
+        .metrics-panel {
+            flex: 1;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #bdc3c7;
+            font-size: 0.9rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #34495e;
+            color: white;
+            border: 2px solid #52677a;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status {
+            background: #2c3e50;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #3498db;
+            margin-bottom: 20px;
+        }
+
+        .status.tracking {
+            border-left-color: #e74c3c;
+            background: #8b1538;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #34495e, #2c3e50);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .metric-card.pulse::before {
+            left: 100%;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #3498db;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .swing-analysis {
+            background: #2c3e50;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #34495e;
+        }
+
+        .swing-analysis h3 {
+            color: #3498db;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .analysis-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(52, 73, 94, 0.5);
+            border-radius: 6px;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .tracking-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(231, 76, 60, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: none;
+            z-index: 20;
+        }
+
+        .tracking-indicator.active {
+            display: block;
+            animation: pulse-red 1s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .instructions {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #ecf0f1;
+            line-height: 1.4;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .camera-section {
+                flex: 1;
+                border-right: none;
+                border-bottom: 2px solid #444;
+            }
+            
+            .metrics-panel {
+                flex: none;
+                height: 300px;
+                overflow-y: auto;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="camera-section">
+            <div id="camera-container"></div>
+            <div class="tracking-indicator" id="trackingIndicator">
+                🎯 TRACKING SWING
+            </div>
+        </div>
+        
+        <div class="metrics-panel">
+            <div class="header">
+                <h1>🏌️ Golf Tracker</h1>
+                <p>Real-time swing analysis</p>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                <button id="trackBtn" class="btn btn-secondary" disabled>Track Swing</button>
+            </div>
+            
+            <div id="status" class="status">
+                Click "Start Camera" to begin
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div id="swingSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Swing Speed (mph)</div>
+                </div>
+                <div class="metric-card">
+                    <div id="ballSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Ball Speed (mph)</div>
+                </div>
+                <div class="metric-card">
+                    <div id="clubAngle" class="metric-value">0°</div>
+                    <div class="metric-label">Club Angle</div>
+                </div>
+                <div class="metric-card">
+                    <div id="distance" class="metric-value">0</div>
+                    <div class="metric-label">Distance (yards)</div>
+                </div>
+            </div>
+            
+            <div class="swing-analysis">
+                <h3>📊 Swing Analysis</h3>
+                <div class="analysis-item">
+                    <span>Tempo:</span>
+                    <span id="tempo">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span>Backswing:</span>
+                    <span id="backswing">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span>Impact:</span>
+                    <span id="impact">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span>Follow-through:</span>
+                    <span id="followThrough">--</span>
+                </div>
+            </div>
+            
+            <div class="instructions">
+                <strong>Instructions:</strong><br>
+                1. Allow camera access<br>
+                2. Stand sideways to camera<br>
+                3. Click "Track Swing"<br>
+                4. Perform your golf swing<br>
+                5. View real-time analysis
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let capture;
+        let prevFrame;
+        let currentFrame;
+        let motionThreshold = 25;
+        let isTracking = false;
+        let swingData = {
+            motionHistory: [],
+            maxMotion: 0,
+            swingStartTime: 0,
+            swingPhases: {
+                setup: 0,
+                backswing: 0,
+                downswing: 0,
+                impact: 0,
+                followThrough: 0
+            },
+            swingDetected: false,
+            peakMotionTime: 0,
+            currentPhase: 'setup'
+        };
+
+        // UI Elements
+        let startBtn, trackBtn, status, trackingIndicator;
+        let swingSpeed, ballSpeed, clubAngle, distance;
+        let tempo, backswing, impact, followThrough;
+
+        function setup() {
+            // Create canvas in the camera container
+            let canvas = createCanvas(800, 600);
+            canvas.parent('camera-container');
+            
+            // Get UI elements
+            startBtn = document.getElementById('startBtn');
+            trackBtn = document.getElementById('trackBtn');
+            status = document.getElementById('status');
+            trackingIndicator = document.getElementById('trackingIndicator');
+            
+            swingSpeed = document.getElementById('swingSpeed');
+            ballSpeed = document.getElementById('ballSpeed');
+            clubAngle = document.getElementById('clubAngle');
+            distance = document.getElementById('distance');
+            
+            tempo = document.getElementById('tempo');
+            backswing = document.getElementById('backswing');
+            impact = document.getElementById('impact');
+            followThrough = document.getElementById('followThrough');
+            
+            // Setup button events
+            startBtn.addEventListener('click', toggleCamera);
+            trackBtn.addEventListener('click', toggleTracking);
+            
+            // Initial setup
+            textAlign(CENTER);
+            textSize(16);
+            fill(255);
+            text('Click "Start Camera" to begin', width/2, height/2);
+        }
+
+        function draw() {
+            background(0);
+            
+            if (capture && capture.loadedmetadata) {
+                // Display video
+                image(capture, 0, 0, width, height);
+                
+                if (isTracking) {
+                    // Detect motion
+                    detectMotionAndAnalyze();
+                    
+                    // Draw motion overlay
+                    drawMotionOverlay();
+                    
+                    // Draw swing path
+                    drawSwingPath();
+                }
+                
+                // Draw camera info
+                drawCameraInfo();
+            } else {
+                // Camera not ready
+                fill(100);
+                textAlign(CENTER);
+                text('Initializing camera...', width/2, height/2);
+            }
+        }
+
+        async function toggleCamera() {
+            if (capture) {
+                // Stop camera
+                capture.remove();
+                capture = null;
+                startBtn.textContent = 'Start Camera';
+                trackBtn.disabled = true;
+                updateStatus('Camera stopped');
+            } else {
+                // Start camera
+                try {
+                    updateStatus('Starting camera...');
+                    capture = createCapture(VIDEO);
+                    capture.size(width, height);
+                    capture.hide(); // Hide the default video element
+                    
+                    // Wait for camera to be ready
+                    capture.elt.addEventListener('loadedmetadata', () => {
+                        startBtn.textContent = 'Stop Camera';
+                        trackBtn.disabled = false;
+                        updateStatus('Camera ready! Click "Track Swing" to begin analysis');
+                    });
+                    
+                } catch (error) {
+                    console.error('Camera error:', error);
+                    updateStatus('Camera access denied. Please allow camera permission.');
+                }
+            }
+        }
+
+        function toggleTracking() {
+            isTracking = !isTracking;
+            
+            if (isTracking) {
+                trackBtn.textContent = 'Stop Tracking';
+                trackingIndicator.classList.add('active');
+                updateStatus('Tracking active! Perform your golf swing now', 'tracking');
+                resetSwingData();
+            } else {
+                trackBtn.textContent = 'Track Swing';
+                trackingIndicator.classList.remove('active');
+                updateStatus('Tracking stopped');
+            }
+        }
+
+        function detectMotionAndAnalyze() {
+            if (!capture || !capture.loadedmetadata) return;
+            
+            // Create motion detection
+            capture.loadPixels();
+            
+            if (prevFrame) {
+                let motionAmount = 0;
+                let motionCenterX = 0;
+                let motionCenterY = 0;
+                let motionPixels = 0;
+                
+                // Compare current frame with previous frame
+                for (let i = 0; i < capture.pixels.length; i += 16) { // Sample every 4th pixel for performance
+                    let currentR = capture.pixels[i];
+                    let currentG = capture.pixels[i + 1];
+                    let currentB = capture.pixels[i + 2];
+                    
+                    let prevR = prevFrame[i];
+                    let prevG = prevFrame[i + 1];
+                    let prevB = prevFrame[i + 2];
+                    
+                    let diff = abs(currentR - prevR) + abs(currentG - prevG) + abs(currentB - prevB);
+                    
+                    if (diff > motionThreshold) {
+                        motionAmount += diff;
+                        let pixelIndex = i / 4;
+                        let x = pixelIndex % width;
+                        let y = floor(pixelIndex / width);
+                        motionCenterX += x;
+                        motionCenterY += y;
+                        motionPixels++;
+                    }
+                }
+                
+                // Normalize motion
+                let normalizedMotion = motionAmount / 10000;
+                
+                if (motionPixels > 0) {
+                    motionCenterX /= motionPixels;
+                    motionCenterY /= motionPixels;
+                }
+                
+                // Analyze swing
+                analyzeSwingMotion(normalizedMotion, motionCenterX, motionCenterY);
+            }
+            
+            // Store current frame for next comparison
+            prevFrame = [...capture.pixels];
+        }
+
+        function analyzeSwingMotion(motion, centerX, centerY) {
+            let currentTime = millis();
+            
+            // Add to motion history
+            swingData.motionHistory.push({
+                motion: motion,
+                centerX: centerX,
+                centerY: centerY,
+                time: currentTime
+            });
+            
+            // Keep only last 3 seconds of data
+            swingData.motionHistory = swingData.motionHistory.filter(
+                m => currentTime - m.time < 3000
+            );
+            
+            // Detect swing phases
+            detectSwingPhase(motion, currentTime);
+            
+            // Calculate real-time metrics
+            calculateSwingMetrics(motion, centerX, centerY, currentTime);
+            
+            // Update UI
+            updateMetricsDisplay();
+        }
+
+        function detectSwingPhase(motion, currentTime) {
+            // Swing detection thresholds
+            if (motion > 15 && !swingData.swingDetected) {
+                swingData.swingDetected = true;
+                swingData.swingStartTime = currentTime;
+                swingData.currentPhase = 'backswing';
+                updateStatus('Backswing detected!', 'tracking');
+            }
+            
+            if (swingData.swingDetected) {
+                let timeSinceStart = currentTime - swingData.swingStartTime;
+                
+                // Phase detection based on motion pattern and time
+                if (motion > swingData.maxMotion) {
+                    swingData.maxMotion = motion;
+                    swingData.peakMotionTime = currentTime;
+                    
+                    if (motion > 40) {
+                        swingData.currentPhase = 'impact';
+                        updateStatus('Impact detected! 💥', 'tracking');
+                    } else if (motion > 25) {
+                        swingData.currentPhase = 'downswing';
+                        updateStatus('Downswing in progress...', 'tracking');
+                    }
+                }
+                
+                // Follow-through detection
+                if (currentTime - swingData.peakMotionTime > 500 && motion < 10) {
+                    swingData.currentPhase = 'followThrough';
+                    updateStatus('Follow-through completed', 'tracking');
+                    
+                    // Complete swing analysis
+                    setTimeout(() => {
+                        completeSwingAnalysis();
+                    }, 1000);
+                }
+            }
+        }
+
+        function calculateSwingMetrics(motion, centerX, centerY, currentTime) {
+            // Calculate swing speed (convert motion to realistic mph)
+            let speedMph = Math.min(motion * 3.5, 120);
+            swingData.swingSpeed = Math.max(swingData.swingSpeed || 0, speedMph);
+            
+            // Calculate ball speed (physics: ball speed = club speed * 1.45)
+            swingData.ballSpeed = swingData.swingSpeed * 1.45;
+            
+            // Calculate club angle based on motion center position
+            let angleFromCenter = map(centerX, 0, width, -45, 45);
+            swingData.clubAngle = angleFromCenter;
+            
+            // Calculate distance (ball speed * carry factor)
+            swingData.distance = swingData.ballSpeed * 2.1;
+            
+            // Calculate tempo
+            if (swingData.motionHistory.length > 10) {
+                let recentMotions = swingData.motionHistory.slice(-10);
+                let avgMotion = recentMotions.reduce((sum, m) => sum + m.motion, 0) / recentMotions.length;
+                swingData.tempo = avgMotion > 20 ? 'Fast' : avgMotion > 10 ? 'Medium' : 'Slow';
+            }
+        }
+
+        function updateMetricsDisplay() {
+            swingSpeed.textContent = Math.round(swingData.swingSpeed || 0);
+            ballSpeed.textContent = Math.round(swingData.ballSpeed || 0);
+            clubAngle.textContent = Math.round(swingData.clubAngle || 0) + '°';
+            distance.textContent = Math.round(swingData.distance || 0);
+            
+            tempo.textContent = swingData.tempo || '--';
+            backswing.textContent = swingData.currentPhase === 'backswing' ? '✓ Active' : '--';
+            impact.textContent = swingData.currentPhase === 'impact' ? '✓ Detected' : '--';
+            followThrough.textContent = swingData.currentPhase === 'followThrough' ? '✓ Complete' : '--';
+        }
+
+        function drawMotionOverlay() {
+            // Draw motion visualization
+            if (swingData.motionHistory.length > 0) {
+                let recentMotion = swingData.motionHistory[swingData.motionHistory.length - 1];
+                
+                // Motion circle
+                fill(255, 100, 100, 100);
+                noStroke();
+                let radius = map(recentMotion.motion, 0, 50, 10, 100);
+                ellipse(recentMotion.centerX, recentMotion.centerY, radius);
+                
+                // Motion indicator
+                fill(255, 255, 0);
+                textAlign(LEFT);
+                text(`Motion: ${recentMotion.motion.toFixed(1)}`, 10, 30);
+                text(`Phase: ${swingData.currentPhase}`, 10, 50);
+            }
+        }
+
+        function drawSwingPath() {
+            // Draw swing path trail
+            if (swingData.motionHistory.length > 2) {
+                stroke(0, 255, 255);
+                strokeWeight(3);
+                noFill();
+                
+                beginShape();
+                for (let i = Math.max(0, swingData.motionHistory.length - 20); i < swingData.motionHistory.length; i++) {
+                    let point = swingData.motionHistory[i];
+                    vertex(point.centerX, point.centerY);
+                }
+                endShape();
+            }
+        }
+
+        function drawCameraInfo() {
+            // Draw frame rate and tracking info
+            fill(255, 255, 0);
+            textAlign(RIGHT);
+            text(`FPS: ${frameRate().toFixed(1)}`, width - 10, 20);
+            
+            if (isTracking) {
+                fill(255, 100, 100);
+                text('🔴 TRACKING', width - 10, 40);
+            }
+        }
+
+        function completeSwingAnalysis() {
+            updateStatus(`Swing complete! Max speed: ${Math.round(swingData.swingSpeed)} mph`);
+            
+            // Animate metrics
+            animateMetrics();
+            
+            // Reset for next swing
+            setTimeout(() => {
+                resetSwingData();
+            }, 3000);
+        }
+
+        function animateMetrics() {
+            document.querySelectorAll('.metric-card').forEach((card, index) => {
+                setTimeout(() => {
+                    card.classList.add('pulse');
+                    setTimeout(() => {
+                        card.classList.remove('pulse');
+                    }, 500);
+                }, index * 100);
+            });
+        }
+
+        function resetSwingData() {
+            swingData = {
+                motionHistory: [],
+                maxMotion: 0,
+                swingStartTime: 0,
+                swingPhases: {
+                    setup: 0,
+                    backswing: 0,
+                    downswing: 0,
+                    impact: 0,
+                    followThrough: 0
+                },
+                swingDetected: false,
+                peakMotionTime: 0,
+                currentPhase: 'setup',
+                swingSpeed: 0,
+                ballSpeed: 0,
+                clubAngle: 0,
+                distance: 0,
+                tempo: ''
+            };
+        }
+
+        function updateStatus(message, type = '') {
+            status.textContent = message;
+            status.className = 'status' + (type ? ' ' + type : '');
+        }
+
+        // Handle window resize
+        function windowResized() {
+            let container = document.getElementById('camera-container');
+            resizeCanvas(container.offsetWidth, container.offsetHeight);
+        }
+    </script>
+</body>
+</html>
