@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golf Swing Analyzer - AI Pose Tracking</title>
+    
+    <!-- P5.js and ml5.js libraries with fallbacks -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ml5@0.12.2/dist/ml5.min.js"></script>
+    
+    <!-- Fallback CDNs for ml5.js -->
+    <script>
+        // Check if ml5 loaded, if not try fallback
+        window.addEventListener('load', function() {
+            if (typeof ml5 === 'undefined') {
+                console.log('Primary ml5 CDN failed, trying fallback...');
+                
+                // Try alternative CDN
+                const fallbackScript = document.createElement('script');
+                fallbackScript.src = 'https://unpkg.com/ml5@0.12.2/dist/ml5.min.js';
+                fallbackScript.onerror = function() {
+                    console.log('Fallback CDN also failed, trying jsdelivr...');
+                    
+                    // Try second fallback
+                    const script2 = document.createElement('script');
+                    script2.src = 'https://cdn.jsdelivr.net/npm/ml5@latest/dist/ml5.min.js';
+                    script2.onerror = function() {
+                        console.error('All CDNs failed. ml5.js could not be loaded.');
+                        document.getElementById('overlayInfo').textContent = '❌ AI libraries failed to load';
+                        document.getElementById('statusCard').textContent = 'AI model unavailable - CDN connection failed';
+                    };
+                    document.head.appendChild(script2);
+                };
+                document.head.appendChild(fallbackScript);
+            }
+        });
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a365d 0%, #2d3748 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .video-section {
+            flex: 2;
+            position: relative;
+            background: #000;
+            border-right: 3px solid #4a5568;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .analysis-panel {
+            flex: 1;
+            background: rgba(26, 54, 93, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 1px solid #4a5568;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+            padding: 20px;
+            background: linear-gradient(135deg, #3182ce, #2b6cb0);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(49, 130, 206, 0.3);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .controls button:nth-child(3),
+        .controls button:nth-child(4) {
+            grid-column: span 1;
+            font-size: 12px;
+            padding: 10px 15px;
+        }
+
+        .btn {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #3182ce, #2c5282);
+            color: white;
+            box-shadow: 0 4px 15px rgba(49, 130, 206, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(49, 130, 206, 0.6);
+        }
+
+        .btn-secondary {
+            background: #4a5568;
+            color: white;
+            border: 2px solid #718096;
+        }
+
+        .btn-secondary:hover {
+            background: #2d3748;
+            border-color: #a0aec0;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status-card {
+            background: #2d3748;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3182ce;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .status-card.tracking {
+            border-left-color: #e53e3e;
+            background: #742a2a;
+        }
+
+        .status-card.analyzing {
+            border-left-color: #d69e2e;
+            background: #744210;
+        }
+
+        .metrics-section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            color: #63b3ed;
+            margin-bottom: 15px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #2d3748, #1a202c);
+            padding: 18px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid transparent;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(99, 179, 237, 0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .metric-card.updated::before {
+            left: 100%;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #63b3ed;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(99, 179, 237, 0.5);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: #a0aec0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .swing-analysis {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #4a5568;
+            margin-bottom: 20px;
+        }
+
+        .analysis-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #4a5568;
+        }
+
+        .analysis-item:last-child {
+            border-bottom: none;
+        }
+
+        .analysis-label {
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .analysis-value {
+            color: #63b3ed;
+            font-weight: 700;
+        }
+
+        .pose-info {
+            background: #1a202c;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 6px;
+            background: #4a5568;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e53e3e, #d69e2e, #38a169);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+
+        .overlay-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+
+        .swing-phase {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(227, 62, 62, 0.9);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1rem;
+            z-index: 10;
+            display: none;
+        }
+
+        .swing-phase.active {
+            display: block;
+            animation: pulse-glow 1.5s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { 
+                opacity: 1; 
+                box-shadow: 0 0 20px rgba(227, 62, 62, 0.6);
+            }
+            50% { 
+                opacity: 0.8; 
+                box-shadow: 0 0 30px rgba(227, 62, 62, 0.8);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                flex-direction: column;
+            }
+            
+            .video-section {
+                flex: 1;
+                border-right: none;
+                border-bottom: 3px solid #4a5568;
+            }
+            
+            .analysis-panel {
+                flex: none;
+                height: 50vh;
+                border-left: none;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Video Section -->
+        <div class="video-section">
+            <div id="video-container"></div>
+            <div class="overlay-info" id="overlayInfo">
+                🤖 AI Loading...
+            </div>
+            <div class="swing-phase" id="swingPhase">
+                📍 TRACKING SWING
+            </div>
+        </div>
+        
+        <!-- Analysis Panel -->
+        <div class="analysis-panel">
+            <div class="header">
+                <h1>🏌️ Golf AI Analyzer</h1>
+                <p>Real-time pose tracking & swing analysis</p>
+            </div>
+            
+            <div class="controls">
+                <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                <button id="analyzeBtn" class="btn btn-secondary" disabled>Analyze Swing</button>
+                <button id="refreshBtn" class="btn btn-secondary" onclick="location.reload()">🔄 Refresh</button>
+                <button id="testBtn" class="btn btn-secondary" onclick="testAI()">🧪 Test AI</button>
+            </div>
+            
+            <div id="statusCard" class="status-card">
+                Click "Start Camera" to begin pose tracking
+            </div>
+            
+            <!-- Swing Metrics -->
+            <div class="metrics-section">
+                <div class="section-title">⚡ Swing Metrics</div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div id="clubSpeed" class="metric-value">0</div>
+                        <div class="metric-label">Club Speed (mph)</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="ballSpeed" class="metric-value">0</div>
+                        <div class="metric-label">Ball Speed (mph)</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="shoulderTurn" class="metric-value">0°</div>
+                        <div class="metric-label">Shoulder Turn</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="distance" class="metric-value">0</div>
+                        <div class="metric-label">Distance (yards)</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Swing Analysis -->
+            <div class="swing-analysis">
+                <div class="section-title">📊 Swing Analysis</div>
+                <div class="analysis-item">
+                    <span class="analysis-label">Swing Tempo:</span>
+                    <span id="swingTempo" class="analysis-value">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="analysis-label">Backswing Time:</span>
+                    <span id="backswingTime" class="analysis-value">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="analysis-label">Impact Position:</span>
+                    <span id="impactPos" class="analysis-value">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="analysis-label">Follow-through:</span>
+                    <span id="followThrough" class="analysis-value">--</span>
+                </div>
+                <div class="analysis-item">
+                    <span class="analysis-label">Swing Plane:</span>
+                    <span id="swingPlane" class="analysis-value">--</span>
+                </div>
+            </div>
+            
+            <!-- Pose Tracking Info -->
+            <div class="pose-info">
+                <div class="section-title">🎯 Pose Tracking</div>
+                <div>Detection Confidence:</div>
+                <div class="confidence-bar">
+                    <div id="confidenceBar" class="confidence-fill" style="width: 0%"></div>
+                </div>
+                <div style="margin-top: 10px; font-size: 0.8rem; color: #a0aec0;">
+                    <strong>Tips:</strong><br>
+                    • Stand sideways to camera<br>
+                    • Ensure good lighting<br>
+                    • Keep entire body visible<br>
+                    • Perform slow practice swings first<br><br>
+                    <strong style="color: #f6ad55;">⚠️ Camera Issues?</strong><br>
+                    • Allow camera permissions when prompted<br>
+                    • Use HTTPS or localhost for best results<br>
+                    • Try refreshing the page<br>
+                    • Check if other apps are using camera
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let video;
+        let poseNet;
+        let poses = [];
+        let isAnalyzing = false;
+        let modelLoaded = false;
+        
+        // Swing analysis data
+        let swingData = {
+            keypoints: [],
+            swingStartTime: 0,
+            swingPhase: 'setup',
+            maxWristVelocity: 0,
+            shoulderAngle: 0,
+            backswingPeak: 0,
+            impactFrame: null,
+            swingStarted: false,
+            frameCount: 0
+        };
+        
+        // UI elements
+        let startBtn, analyzeBtn, statusCard, overlayInfo, swingPhase;
+        let clubSpeed, ballSpeed, shoulderTurn, distance;
+        let swingTempo, backswingTime, impactPos, followThrough, swingPlane;
+        let confidenceBar;
+        
+        // Previous frame data for velocity calculation
+        let previousPoses = [];
+        let velocityHistory = [];
+
+        function setup() {
+            // Check if ml5.js loaded properly
+            if (typeof ml5 === 'undefined') {
+                console.error('ml5.js failed to load');
+                updateStatus('AI libraries not loaded. Please refresh the page.');
+                overlayInfo.textContent = '❌ AI libraries missing';
+                
+                // Disable camera button
+                startBtn.disabled = true;
+                startBtn.textContent = 'AI Libraries Missing';
+                
+                background(255, 100, 100);
+                fill(255);
+                textAlign(CENTER, CENTER);
+                textSize(16);
+                text('❌ AI Libraries Failed to Load\nPlease refresh the page', width/2, height/2);
+                return;
+            }
+            
+            // Check if we're on HTTPS or localhost
+            if (location.protocol !== 'https:' && !location.hostname.includes('localhost') && location.hostname !== '127.0.0.1') {
+                console.warn('Camera may not work on HTTP. Use HTTPS or localhost for best results.');
+            }
+            
+            // Create canvas in video container
+            let canvas = createCanvas(800, 600);
+            canvas.parent('video-container');
+            
+            // Get UI elements
+            initializeUIElements();
+            
+            // Setup button events
+            startBtn.addEventListener('click', toggleCamera);
+            analyzeBtn.addEventListener('click', toggleAnalysis);
+            
+            // Initial display
+            background(0);
+            fill(255);
+            textAlign(CENTER, CENTER);
+            textSize(20);
+            text('🎥 Click "Start Camera" to begin', width/2, height/2);
+            
+            updateStatus('Ready to start - Click "Start Camera"');
+            
+            // Test camera availability
+            testCameraAvailability();
+        }
+        
+        async function testCameraAvailability() {
+            try {
+                if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                    
+                    if (videoDevices.length === 0) {
+                        overlayInfo.textContent = '⚠️ No camera detected';
+                        updateStatus('No camera found on this device');
+                    } else {
+                        overlayInfo.textContent = `📷 ${videoDevices.length} camera(s) detected`;
+                    }
+                }
+            } catch (error) {
+                console.error('Camera enumeration error:', error);
+                overlayInfo.textContent = '⚠️ Camera check failed';
+            }
+        }
+        
+        function testAI() {
+            console.log('=== AI Diagnostic Test ===');
+            
+            let report = [];
+            
+            // Test p5.js
+            if (typeof p5 !== 'undefined') {
+                report.push('✅ p5.js loaded');
+            } else {
+                report.push('❌ p5.js missing');
+            }
+            
+            // Test ml5.js
+            if (typeof ml5 !== 'undefined') {
+                report.push('✅ ml5.js loaded');
+                
+                // Test poseNet function
+                if (typeof ml5.poseNet === 'function') {
+                    report.push('✅ ml5.poseNet available');
+                } else {
+                    report.push('❌ ml5.poseNet missing');
+                }
+            } else {
+                report.push('❌ ml5.js missing');
+            }
+            
+            // Test browser features
+            if (navigator.mediaDevices) {
+                report.push('✅ MediaDevices API available');
+            } else {
+                report.push('❌ MediaDevices API missing');
+            }
+            
+            // Test HTTPS
+            if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                report.push('✅ Secure context (HTTPS/localhost)');
+            } else {
+                report.push('⚠️ HTTP - may cause camera issues');
+            }
+            
+            console.log(report.join('\n'));
+            
+            updateStatus('AI Test Results: ' + report.length + ' checks completed. See console (F12) for details.');
+            overlayInfo.textContent = '🧪 Test complete - check console';
+            
+            alert('AI Diagnostic Results:\n\n' + report.join('\n') + '\n\nSee browser console (F12) for more details.');
+        }
+
+        function initializeUIElements() {
+            startBtn = document.getElementById('startBtn');
+            analyzeBtn = document.getElementById('analyzeBtn');
+            statusCard = document.getElementById('statusCard');
+            overlayInfo = document.getElementById('overlayInfo');
+            swingPhase = document.getElementById('swingPhase');
+            
+            clubSpeed = document.getElementById('clubSpeed');
+            ballSpeed = document.getElementById('ballSpeed');
+            shoulderTurn = document.getElementById('shoulderTurn');
+            distance = document.getElementById('distance');
+            
+            swingTempo = document.getElementById('swingTempo');
+            backswingTime = document.getElementById('backswingTime');
+            impactPos = document.getElementById('impactPos');
+            followThrough = document.getElementById('followThrough');
+            swingPlane = document.getElementById('swingPlane');
+            
+            confidenceBar = document.getElementById('confidenceBar');
+        }
+
+        function toggleCamera() {
+            if (video) {
+                // Stop camera
+                video.remove();
+                video = null;
+                if (poseNet) {
+                    poseNet = null;
+                }
+                startBtn.textContent = 'Start Camera';
+                analyzeBtn.disabled = true;
+                updateStatus('Camera stopped');
+                overlayInfo.textContent = '📷 Camera stopped';
+                modelLoaded = false;
+                
+                // Reset canvas
+                background(0);
+                fill(255);
+                textAlign(CENTER, CENTER);
+                text('🎥 Click "Start Camera" to begin', width/2, height/2);
+                
+            } else {
+                // Start camera
+                startCamera();
+            }
+        }
+
+        async function startCamera() {
+            updateStatus('Starting camera and loading AI model...');
+            overlayInfo.textContent = '🤖 Loading AI model...';
+            
+            try {
+                // First check if getUserMedia is available
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera not supported in this browser');
+                }
+                
+                // Request camera permissions first
+                await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    } 
+                });
+                
+                // Create video capture with constraints
+                video = createCapture({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                }, videoReady);
+                
+                video.size(width, height);
+                video.hide();
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                let errorMsg = 'Camera access failed. ';
+                
+                if (error.name === 'NotAllowedError') {
+                    errorMsg += 'Please allow camera permissions and refresh the page.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMsg += 'No camera found on this device.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMsg += 'Camera not supported in this browser.';
+                } else {
+                    errorMsg += 'Please check camera permissions and try again.';
+                }
+                
+                updateStatus(errorMsg);
+                overlayInfo.textContent = '❌ Camera error: ' + error.name;
+                startBtn.textContent = 'Start Camera';
+            }
+        }
+        
+        function videoReady() {
+            console.log('Video stream ready!');
+            updateStatus('Video ready, loading AI model...');
+            overlayInfo.textContent = '🤖 Loading AI model...';
+            
+            // Double-check ml5 is available
+            if (typeof ml5 === 'undefined') {
+                console.error('ml5.js not available when trying to create PoseNet');
+                updateStatus('AI libraries not loaded. Please refresh the page.');
+                overlayInfo.textContent = '❌ ml5.js missing';
+                return;
+            }
+            
+            // Check if poseNet function exists
+            if (typeof ml5.poseNet !== 'function') {
+                console.error('ml5.poseNet function not available');
+                updateStatus('PoseNet model not available. Please refresh the page.');
+                overlayInfo.textContent = '❌ PoseNet unavailable';
+                return;
+            }
+            
+            try {
+                console.log('Creating PoseNet model...');
+                
+                // Initialize PoseNet with very basic options for reliability
+                poseNet = ml5.poseNet(video, {
+                    architecture: 'MobileNetV1',
+                    imageScaleFactor: 0.5,
+                    outputStride: 16,
+                    flipHorizontal: false,
+                    minConfidence: 0.5,
+                    maxPoseDetections: 1,
+                    detectionType: 'single'
+                }, function() {
+                    console.log('PoseNet model ready callback fired');
+                    modelReady();
+                });
+                
+                // Listen for pose events
+                poseNet.on('pose', gotPoses);
+                
+                // Add timeout in case model doesn't load
+                setTimeout(() => {
+                    if (!modelLoaded) {
+                        console.error('PoseNet model loading timeout');
+                        updateStatus('AI model loading timeout. Please refresh and try again.');
+                        overlayInfo.textContent = '❌ Model timeout - refresh page';
+                    }
+                }, 30000); // 30 second timeout
+                
+            } catch (error) {
+                console.error('PoseNet initialization error:', error);
+                updateStatus('AI model failed to initialize: ' + error.message);
+                overlayInfo.textContent = '❌ PoseNet init failed';
+                
+                // Try a simplified fallback
+                setTimeout(() => {
+                    console.log('Trying simplified PoseNet initialization...');
+                    try {
+                        poseNet = ml5.poseNet(video, modelReady);
+                        poseNet.on('pose', gotPoses);
+                    } catch (fallbackError) {
+                        console.error('Fallback PoseNet also failed:', fallbackError);
+                        updateStatus('AI model completely failed. Please refresh the page.');
+                    }
+                }, 2000);
+            }
+        }
+
+        function modelReady() {
+            console.log('PoseNet model loaded successfully!');
+            modelLoaded = true;
+            startBtn.textContent = 'Stop Camera';
+            analyzeBtn.disabled = false;
+            updateStatus('AI model loaded! Camera ready for pose tracking');
+            overlayInfo.textContent = '✅ AI ready - Pose tracking active';
+        }
+
+        function gotPoses(results) {
+            poses = results;
+            
+            // Update confidence display
+            if (poses.length > 0) {
+                let confidence = poses[0].pose.score * 100;
+                confidenceBar.style.width = confidence + '%';
+                
+                if (isAnalyzing) {
+                    analyzePoseData(poses[0]);
+                }
+            } else {
+                confidenceBar.style.width = '0%';
+            }
+        }
+
+        function draw() {
+            try {
+                if (video && video.elt && video.elt.readyState >= 2) {
+                    // Draw video
+                    image(video, 0, 0, width, height);
+                    
+                    // Draw poses
+                    drawKeypoints();
+                    drawSkeleton();
+                    
+                    if (isAnalyzing) {
+                        drawSwingAnalysis();
+                    }
+                    
+                    // Draw frame info
+                    drawFrameInfo();
+                } else {
+                    // Show loading or waiting state
+                    background(0);
+                    fill(255);
+                    textAlign(CENTER, CENTER);
+                    textSize(20);
+                    
+                    if (video) {
+                        text('📹 Initializing camera...', width/2, height/2);
+                    } else {
+                        text('🎥 Click "Start Camera" to begin', width/2, height/2);
+                    }
+                }
+            } catch (error) {
+                console.error('Draw error:', error);
+                background(0);
+                fill(255, 100, 100);
+                textAlign(CENTER, CENTER);
+                textSize(16);
+                text('Video error - please restart camera', width/2, height/2);
+            }
+        }
+
+        function toggleAnalysis() {
+            isAnalyzing = !isAnalyzing;
+            
+            if (isAnalyzing) {
+                analyzeBtn.textContent = 'Stop Analysis';
+                swingPhase.classList.add('active');
+                updateStatus('🎯 Swing analysis active! Perform your golf swing', 'analyzing');
+                resetSwingData();
+            } else {
+                analyzeBtn.textContent = 'Analyze Swing';
+                swingPhase.classList.remove('active');
+                updateStatus('Analysis stopped');
+            }
+        }
+
+        function analyzePoseData(pose) {
+            if (!pose || !pose.pose.keypoints) return;
+            
+            let keypoints = pose.pose.keypoints;
+            swingData.frameCount++;
+            
+            // Store keypoints history
+            swingData.keypoints.push({
+                frame: swingData.frameCount,
+                time: millis(),
+                keypoints: keypoints
+            });
+            
+            // Keep only last 3 seconds of data
+            let cutoffTime = millis() - 3000;
+            swingData.keypoints = swingData.keypoints.filter(k => k.time > cutoffTime);
+            
+            // Analyze swing motion
+            analyzeSwingMotion(keypoints);
+            
+            // Update metrics display
+            updateMetricsDisplay();
+        }
+
+        function analyzeSwingMotion(keypoints) {
+            // Get key body points
+            let leftShoulder = keypoints[5];
+            let rightShoulder = keypoints[6];
+            let leftWrist = keypoints[9];
+            let rightWrist = keypoints[10];
+            let leftHip = keypoints[11];
+            let rightHip = keypoints[12];
+            
+            if (!leftShoulder || !rightShoulder || !leftWrist || !rightWrist) return;
+            
+            // Calculate shoulder turn angle
+            let shoulderAngle = calculateShoulderTurn(leftShoulder, rightShoulder);
+            swingData.shoulderAngle = shoulderAngle;
+            
+            // Determine dominant hand wrist (assume right-handed)
+            let dominantWrist = rightWrist;
+            
+            // Calculate wrist velocity
+            let wristVelocity = calculateWristVelocity(dominantWrist);
+            
+            // Detect swing phases
+            detectSwingPhase(wristVelocity, shoulderAngle, dominantWrist);
+            
+            // Calculate swing metrics
+            calculateSwingMetrics(wristVelocity, shoulderAngle);
+        }
+
+        function calculateShoulderTurn(leftShoulder, rightShoulder) {
+            let shoulderVector = {
+                x: rightShoulder.position.x - leftShoulder.position.x,
+                y: rightShoulder.position.y - leftShoulder.position.y
+            };
+            
+            let angle = Math.atan2(shoulderVector.y, shoulderVector.x) * 180 / Math.PI;
+            return Math.abs(angle);
+        }
+
+        function calculateWristVelocity(wrist) {
+            if (previousPoses.length < 2) {
+                previousPoses.push(wrist.position);
+                return 0;
+            }
+            
+            let currentPos = wrist.position;
+            let prevPos = previousPoses[previousPoses.length - 1];
+            
+            let distance = dist(currentPos.x, currentPos.y, prevPos.x, prevPos.y);
+            let velocity = distance * frameRate(); // pixels per second
+            
+            // Convert to approximate mph (rough calibration)
+            let velocityMph = (velocity * 0.01);
+            
+            // Store velocity history
+            velocityHistory.push(velocityMph);
+            if (velocityHistory.length > 30) velocityHistory.shift();
+            
+            // Update previous poses
+            previousPoses.push(currentPos);
+            if (previousPoses.length > 5) previousPoses.shift();
+            
+            return velocityMph;
+        }
+
+        function detectSwingPhase(velocity, shoulderAngle, wrist) {
+            let currentTime = millis();
+            
+            // Detect swing start
+            if (velocity > 5 && !swingData.swingStarted) {
+                swingData.swingStarted = true;
+                swingData.swingStartTime = currentTime;
+                swingData.swingPhase = 'backswing';
+                swingPhase.textContent = '⬆️ BACKSWING';
+                updateStatus('Backswing detected!', 'tracking');
+            }
+            
+            if (swingData.swingStarted) {
+                let timeSinceStart = currentTime - swingData.swingStartTime;
+                
+                // Detect peak backswing
+                if (shoulderAngle > swingData.backswingPeak) {
+                    swingData.backswingPeak = shoulderAngle;
+                }
+                
+                // Detect downswing (velocity increases significantly)
+                if (velocity > swingData.maxWristVelocity) {
+                    swingData.maxWristVelocity = velocity;
+                    
+                    if (velocity > 15) {
+                        swingData.swingPhase = 'impact';
+                        swingPhase.textContent = '💥 IMPACT ZONE';
+                        updateStatus('Impact zone detected!', 'tracking');
+                    } else if (velocity > 8) {
+                        swingData.swingPhase = 'downswing';
+                        swingPhase.textContent = '⬇️ DOWNSWING';
+                        updateStatus('Downswing in progress...', 'tracking');
+                    }
+                }
+                
+                // Detect follow-through
+                if (timeSinceStart > 1000 && velocity < 3) {
+                    swingData.swingPhase = 'followthrough';
+                    swingPhase.textContent = '🔄 FOLLOW-THROUGH';
+                    updateStatus('Follow-through completed', 'tracking');
+                    
+                    // Complete swing analysis
+                    setTimeout(() => {
+                        completeSwingAnalysis();
+                    }, 1500);
+                }
+            }
+        }
+
+        function calculateSwingMetrics(velocity, shoulderAngle) {
+            // Club speed (based on wrist velocity)
+            let clubSpeedMph = Math.min(swingData.maxWristVelocity * 4, 120);
+            
+            // Ball speed (physics: ball speed = club speed * 1.45)
+            let ballSpeedMph = clubSpeedMph * 1.45;
+            
+            // Distance calculation (ball speed * carry factor)
+            let distanceYards = ballSpeedMph * 2.2;
+            
+            // Swing tempo calculation
+            let avgVelocity = velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length;
+            let tempo = avgVelocity > 12 ? 'Fast' : avgVelocity > 6 ? 'Medium' : 'Slow';
+            
+            // Update metrics
+            swingData.calculatedMetrics = {
+                clubSpeed: clubSpeedMph,
+                ballSpeed: ballSpeedMph,
+                distance: distanceYards,
+                tempo: tempo,
+                shoulderTurn: shoulderAngle
+            };
+        }
+
+        function updateMetricsDisplay() {
+            if (!swingData.calculatedMetrics) return;
+            
+            let metrics = swingData.calculatedMetrics;
+            
+            // Update metric values with animation
+            animateMetricUpdate(clubSpeed, Math.round(metrics.clubSpeed));
+            animateMetricUpdate(ballSpeed, Math.round(metrics.ballSpeed));
+            animateMetricUpdate(shoulderTurn, Math.round(metrics.shoulderTurn) + '°');
+            animateMetricUpdate(distance, Math.round(metrics.distance));
+            
+            // Update analysis values
+            swingTempo.textContent = metrics.tempo;
+            backswingTime.textContent = swingData.swingStarted ? 
+                ((millis() - swingData.swingStartTime) / 1000).toFixed(1) + 's' : '--';
+            impactPos.textContent = swingData.swingPhase === 'impact' ? '✅ Good' : 
+                swingData.swingStarted ? '⏳ Tracking' : '--';
+            followThrough.textContent = swingData.swingPhase === 'followthrough' ? '✅ Complete' : '--';
+            swingPlane.textContent = swingData.backswingPeak > 20 ? '✅ Good' : 
+                swingData.swingStarted ? '⏳ Analyzing' : '--';
+        }
+
+        function animateMetricUpdate(element, value) {
+            if (element.textContent !== value.toString()) {
+                element.textContent = value;
+                element.parentElement.classList.add('updated');
+                setTimeout(() => {
+                    element.parentElement.classList.remove('updated');
+                }, 600);
+            }
+        }
+
+        function completeSwingAnalysis() {
+            updateStatus('Swing analysis complete! 🎉');
+            swingPhase.classList.remove('active');
+            
+            // Reset for next swing
+            setTimeout(() => {
+                resetSwingData();
+                updateStatus('Ready for next swing analysis', 'analyzing');
+            }, 3000);
+        }
+
+        function resetSwingData() {
+            swingData = {
+                keypoints: [],
+                swingStartTime: 0,
+                swingPhase: 'setup',
+                maxWristVelocity: 0,
+                shoulderAngle: 0,
+                backswingPeak: 0,
+                impactFrame: null,
+                swingStarted: false,
+                frameCount: 0,
+                calculatedMetrics: null
+            };
+            
+            velocityHistory = [];
+            previousPoses = [];
+        }
+
+        function drawKeypoints() {
+            for (let i = 0; i < poses.length; i++) {
+                let pose = poses[i].pose;
+                for (let j = 0; j < pose.keypoints.length; j++) {
+                    let keypoint = pose.keypoints[j];
+                    if (keypoint.score > 0.2) {
+                        // Color code important points
+                        if ([5, 6, 9, 10].includes(j)) { // shoulders and wrists
+                            fill(255, 100, 100);
+                            noStroke();
+                            ellipse(keypoint.position.x, keypoint.position.y, 12, 12);
+                        } else {
+                            fill(100, 255, 100);
+                            noStroke();
+                            ellipse(keypoint.position.x, keypoint.position.y, 8, 8);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawSkeleton() {
+            for (let i = 0; i < poses.length; i++) {
+                let skeleton = poses[i].skeleton;
+                for (let j = 0; j < skeleton.length; j++) {
+                    let partA = skeleton[j][0];
+                    let partB = skeleton[j][1];
+                    
+                    if (partA.score > 0.2 && partB.score > 0.2) {
+                        stroke(0, 255, 255);
+                        strokeWeight(3);
+                        line(partA.position.x, partA.position.y, 
+                             partB.position.x, partB.position.y);
+                    }
+                }
+            }
+        }
+
+        function drawSwingAnalysis() {
+            if (swingData.keypoints.length > 2) {
+                // Draw swing path for dominant wrist
+                stroke(255, 255, 0);
+                strokeWeight(3);
+                noFill();
+                
+                beginShape();
+                for (let i = Math.max(0, swingData.keypoints.length - 20); i < swingData.keypoints.length; i++) {
+                    let rightWrist = swingData.keypoints[i].keypoints[10];
+                    if (rightWrist && rightWrist.score > 0.2) {
+                        vertex(rightWrist.position.x, rightWrist.position.y);
+                    }
+                }
+                endShape();
+            }
+        }
+
+        function drawFrameInfo() {
+            // Draw frame rate and pose info
+            fill(255, 255, 0);
+            noStroke();
+            textAlign(LEFT);
+            textSize(12);
+            text(`FPS: ${frameRate().toFixed(1)}`, 10, height - 40);
+            text(`Poses: ${poses.length}`, 10, height - 25);
+            text(`Phase: ${swingData.swingPhase}`, 10, height - 10);
+        }
+
+        function updateStatus(message, type = '') {
+            statusCard.textContent = message;
+            statusCard.className = 'status-card' + (type ? ' ' + type : '');
+        }
+
+        // Handle window resize
+        function windowResized() {
+            let container = document.getElementById('video-container');
+            let rect = container.getBoundingClientRect();
+            resizeCanvas(rect.width, rect.height);
+        }
+    </script>
+</body>
+</html>

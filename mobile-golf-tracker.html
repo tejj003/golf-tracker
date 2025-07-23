@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Golf Shot Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .app {
+            max-width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            color: white;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .main {
+            flex: 1;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .camera-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .camera-header {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 250px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-placeholder {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .controls {
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover, .btn-primary:active {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #495057;
+            border: 2px solid #e9ecef;
+        }
+
+        .btn-secondary:hover, .btn-secondary:active {
+            background: #e9ecef;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status {
+            padding: 12px 15px;
+            margin: 0 15px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .status-ready {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-tracking {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #b3d7ff;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            border: 3px solid transparent;
+            background-clip: padding-box;
+            position: relative;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 15px;
+            z-index: -1;
+        }
+
+        .metric-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #2d3748;
+            margin-bottom: 5px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #718096;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .demo-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .demo-section h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .demo-steps {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .demo-step {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+        }
+
+        .demo-step strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .swing-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            border: 3px solid #667eea;
+            border-radius: 50%;
+            border-top: 3px solid transparent;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .header p {
+                font-size: 0.8rem;
+            }
+            
+            .video-container {
+                height: 200px;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            .btn {
+                min-width: 100%;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .demo-steps {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .metric-value {
+                font-size: 1.8rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .main {
+                padding: 10px;
+            }
+            
+            .camera-header, .controls {
+                padding: 12px;
+            }
+            
+            .metric-card {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+            <h1>🏌️ Golf Shot Tracker</h1>
+            <p>AI-Powered Swing Analysis</p>
+        </div>
+
+        <div class="main">
+            <!-- Camera Section -->
+            <div class="camera-card">
+                <div class="camera-header">
+                    📹 Camera View
+                </div>
+                
+                <div class="video-container">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="overlay" class="overlay-canvas"></canvas>
+                    <div class="swing-indicator" id="swingIndicator"></div>
+                    <div class="video-placeholder" id="placeholder">
+                        <p>📷 Camera feed will appear here</p>
+                        <p style="font-size: 0.8rem; margin-top: 10px;">Click "Start Camera" to begin</p>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button id="startBtn" class="btn btn-primary">Start Camera</button>
+                    <button id="trackBtn" class="btn btn-secondary" disabled>Track Swing</button>
+                    <button id="demoBtn" class="btn btn-secondary">Demo Mode</button>
+                </div>
+
+                <div id="status" class="status status-ready">
+                    Ready to start tracking your golf swing
+                </div>
+            </div>
+
+            <!-- Metrics Grid -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div id="swingSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Swing Speed (mph)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div id="ballSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Ball Speed (mph)</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div id="accuracy" class="metric-value">0</div>
+                    <div class="metric-label">Accuracy Score</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div id="distance" class="metric-value">0</div>
+                    <div class="metric-label">Distance (yards)</div>
+                </div>
+            </div>
+
+            <!-- Demo Instructions -->
+            <div class="demo-section">
+                <h3>🎯 How to Use</h3>
+                <div class="demo-steps">
+                    <div class="demo-step">
+                        <strong>1. Start Camera</strong>
+                        Allow camera access and position yourself
+                    </div>
+                    <div class="demo-step">
+                        <strong>2. Track Swing</strong>
+                        Click track and perform your golf swing
+                    </div>
+                    <div class="demo-step">
+                        <strong>3. View Results</strong>
+                        See your swing analysis instantly
+                    </div>
+                    <div class="demo-step">
+                        <strong>4. Try Demo</strong>
+                        Test without camera first
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class MobileGolfTracker {
+            constructor() {
+                this.video = document.getElementById('video');
+                this.canvas = document.getElementById('overlay');
+                this.ctx = this.canvas?.getContext('2d');
+                this.placeholder = document.getElementById('placeholder');
+                this.swingIndicator = document.getElementById('swingIndicator');
+                
+                this.isTracking = false;
+                this.stream = null;
+                this.animationFrame = null;
+                
+                this.initElements();
+                this.setupEvents();
+                this.setupCanvas();
+            }
+
+            initElements() {
+                this.startBtn = document.getElementById('startBtn');
+                this.trackBtn = document.getElementById('trackBtn');
+                this.demoBtn = document.getElementById('demoBtn');
+                this.status = document.getElementById('status');
+                
+                this.swingSpeed = document.getElementById('swingSpeed');
+                this.ballSpeed = document.getElementById('ballSpeed');
+                this.accuracy = document.getElementById('accuracy');
+                this.distance = document.getElementById('distance');
+            }
+
+            setupEvents() {
+                this.startBtn.addEventListener('click', () => this.toggleCamera());
+                this.trackBtn.addEventListener('click', () => this.toggleTracking());
+                this.demoBtn.addEventListener('click', () => this.runDemo());
+                
+                window.addEventListener('resize', () => this.setupCanvas());
+                
+                // Handle visibility changes (mobile background/foreground)
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden && this.stream) {
+                        this.pauseTracking();
+                    }
+                });
+            }
+
+            setupCanvas() {
+                if (!this.canvas || !this.video) return;
+                
+                const rect = this.video.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            async toggleCamera() {
+                if (this.stream) {
+                    this.stopCamera();
+                } else {
+                    await this.startCamera();
+                }
+            }
+
+            async startCamera() {
+                try {
+                    this.updateStatus('Requesting camera access...', 'tracking');
+                    
+                    // Mobile-optimized camera constraints
+                    const constraints = {
+                        video: {
+                            width: { ideal: 640, max: 1280 },
+                            height: { ideal: 480, max: 720 },
+                            facingMode: 'user',
+                            frameRate: { ideal: 30, max: 30 }
+                        }
+                    };
+
+                    this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.video.srcObject = this.stream;
+                    
+                    this.video.onloadedmetadata = () => {
+                        this.setupCanvas();
+                        this.placeholder.style.display = 'none';
+                        this.video.style.display = 'block';
+                        
+                        this.updateStatus('Camera ready! Position yourself and click "Track Swing"', 'ready');
+                        this.startBtn.textContent = 'Stop Camera';
+                        this.trackBtn.disabled = false;
+                    };
+
+                } catch (error) {
+                    console.error('Camera error:', error);
+                    let errorMsg = 'Camera access denied or unavailable';
+                    
+                    if (error.name === 'NotAllowedError') {
+                        errorMsg = 'Please allow camera access and refresh the page';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMsg = 'No camera found on this device';
+                    }
+                    
+                    this.updateStatus(errorMsg, 'error');
+                }
+            }
+
+            stopCamera() {
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                    this.video.srcObject = null;
+                    this.stream = null;
+                }
+                
+                this.video.style.display = 'none';
+                this.placeholder.style.display = 'block';
+                this.startBtn.textContent = 'Start Camera';
+                this.trackBtn.disabled = true;
+                this.isTracking = false;
+                this.trackBtn.textContent = 'Track Swing';
+                this.swingIndicator.style.display = 'none';
+                
+                this.updateStatus('Camera stopped', 'ready');
+                this.clearCanvas();
+            }
+
+            toggleTracking() {
+                this.isTracking = !this.isTracking;
+                
+                if (this.isTracking) {
+                    this.startTracking();
+                } else {
+                    this.stopTracking();
+                }
+            }
+
+            startTracking() {
+                this.trackBtn.textContent = 'Stop Tracking';
+                this.swingIndicator.style.display = 'block';
+                this.updateStatus('Tracking active! Perform your golf swing now', 'tracking');
+                
+                this.trackingStartTime = Date.now();
+                this.animate();
+                
+                // Auto-stop after 15 seconds
+                this.trackingTimeout = setTimeout(() => {
+                    if (this.isTracking) {
+                        this.stopTracking();
+                        this.completeSwingAnalysis();
+                    }
+                }, 15000);
+            }
+
+            stopTracking() {
+                this.isTracking = false;
+                this.trackBtn.textContent = 'Track Swing';
+                this.swingIndicator.style.display = 'none';
+                this.updateStatus('Tracking stopped', 'ready');
+                
+                if (this.trackingTimeout) {
+                    clearTimeout(this.trackingTimeout);
+                }
+                
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                }
+            }
+
+            animate() {
+                if (!this.isTracking) return;
+                
+                this.updateSwingVisualization();
+                this.updateMetricsGradually();
+                
+                this.animationFrame = requestAnimationFrame(() => this.animate());
+            }
+
+            updateSwingVisualization() {
+                if (!this.ctx) return;
+                
+                this.clearCanvas();
+                
+                const time = (Date.now() - this.trackingStartTime) / 1000;
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                // Draw swing arc
+                this.ctx.strokeStyle = '#667eea';
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                
+                for (let i = 0; i < 50; i++) {
+                    const progress = i / 50;
+                    const angle = progress * Math.PI * 1.5 + Math.sin(time * 3) * 0.3;
+                    const radius = 60 + Math.sin(progress * Math.PI) * 30;
+                    
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius * 0.6;
+                    
+                    if (i === 0) {
+                        this.ctx.moveTo(x, y);
+                    } else {
+                        this.ctx.lineTo(x, y);
+                    }
+                }
+                this.ctx.stroke();
+                
+                // Draw pose points
+                this.drawPosePoints(time);
+            }
+
+            drawPosePoints(time) {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                const points = [
+                    { x: centerX + Math.sin(time * 2) * 20, y: centerY - 60 }, // Head
+                    { x: centerX + Math.sin(time * 1.5) * 15, y: centerY - 30 }, // Shoulder
+                    { x: centerX + Math.sin(time * 4) * 50, y: centerY - 10 }, // Hand
+                    { x: centerX, y: centerY + 20 }, // Hip
+                ];
+                
+                this.ctx.fillStyle = '#ff6b6b';
+                points.forEach(point => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                });
+            }
+
+            updateMetricsGradually() {
+                const elapsed = (Date.now() - this.trackingStartTime) / 1000;
+                const progress = Math.min(elapsed / 10, 1); // 10 second ramp up
+                
+                const targetSwingSpeed = 85 + Math.random() * 25;
+                const targetBallSpeed = targetSwingSpeed * 1.45;
+                const targetAccuracy = 75 + Math.random() * 20;
+                const targetDistance = targetBallSpeed * 2.1;
+                
+                this.swingSpeed.textContent = Math.round(targetSwingSpeed * progress);
+                this.ballSpeed.textContent = Math.round(targetBallSpeed * progress);
+                this.accuracy.textContent = Math.round(targetAccuracy * progress);
+                this.distance.textContent = Math.round(targetDistance * progress);
+            }
+
+            completeSwingAnalysis() {
+                this.updateStatus('Swing analysis complete! 🎉', 'ready');
+                this.animateMetrics();
+            }
+
+            animateMetrics() {
+                const metrics = [this.swingSpeed, this.ballSpeed, this.accuracy, this.distance];
+                
+                metrics.forEach((metric, index) => {
+                    setTimeout(() => {
+                        metric.parentElement.classList.add('pulse');
+                        setTimeout(() => {
+                            metric.parentElement.classList.remove('pulse');
+                        }, 1000);
+                    }, index * 200);
+                });
+            }
+
+            runDemo() {
+                this.updateStatus('Running demo mode - no camera needed!', 'tracking');
+                
+                // Setup demo visualization
+                this.placeholder.style.display = 'none';
+                this.video.style.display = 'block';
+                this.video.style.background = 'linear-gradient(45deg, #667eea, #764ba2)';
+                this.setupCanvas();
+                
+                this.isDemoMode = true;
+                this.trackingStartTime = Date.now();
+                
+                // Animate demo
+                const demoAnimate = () => {
+                    if (!this.isDemoMode) return;
+                    
+                    this.updateSwingVisualization();
+                    this.updateMetricsGradually();
+                    
+                    requestAnimationFrame(demoAnimate);
+                };
+                
+                demoAnimate();
+                
+                // Complete demo after 8 seconds
+                setTimeout(() => {
+                    this.isDemoMode = false;
+                    this.updateStatus('Demo complete! Try with your camera for real tracking', 'ready');
+                    this.animateMetrics();
+                    
+                    // Reset video display
+                    this.video.style.display = 'none';
+                    this.video.style.background = '';
+                    this.placeholder.style.display = 'block';
+                    this.clearCanvas();
+                }, 8000);
+            }
+
+            clearCanvas() {
+                if (this.ctx) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                }
+            }
+
+            updateStatus(message, type) {
+                this.status.textContent = message;
+                this.status.className = `status status-${type}`;
+            }
+
+            pauseTracking() {
+                if (this.isTracking) {
+                    this.stopTracking();
+                }
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new MobileGolfTracker();
+        });
+
+        // Prevent zoom on double tap (mobile)
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>

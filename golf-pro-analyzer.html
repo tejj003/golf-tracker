@@ -619,20 +619,20 @@
                 overlayInfo.textContent = '🏃 Loading PoseNet model...';
                 updateStatus('🧠 TensorFlow.js loaded, initializing PoseNet...', 'warning');
                 
-                // Load PoseNet with HIGH ACCURACY configuration
+                // Load PoseNet with optimal configuration
                 net = await posenet.load({
-                    architecture: 'ResNet50', // More accurate than MobileNet
+                    architecture: 'MobileNetV1',
                     outputStride: 16,
-                    inputResolution: { width: 641, height: 481 }, // Higher resolution
-                    multiplier: 1.0, // Maximum accuracy
-                    quantBytes: 4 // Higher precision
+                    inputResolution: { width: 640, height: 480 },
+                    multiplier: 0.75,
+                    quantBytes: 2
                 });
                 
                 console.log('✅ PoseNet model loaded successfully');
                 modelLoaded = true;
                 
-                overlayInfo.textContent = '✅ AI models ready - High accuracy mode!';
-                updateStatus('🎉 High-accuracy AI models loaded! Ready for precise tracking.', 'success');
+                overlayInfo.textContent = '✅ AI models ready!';
+                updateStatus('🎉 AI models loaded successfully! Ready to start tracking.', 'success');
                 
                 // Enable controls
                 startBtn.disabled = false;
@@ -728,25 +728,18 @@
             if (!video || !modelLoaded) return;
             
             try {
-                // Estimate poses with HIGH ACCURACY settings
+                // Estimate poses
                 const poses = await net.estimatePoses(video, {
                     flipHorizontal: false,
-                    decodingMethod: 'single-person',
-                    scoreThreshold: 0.7, // Higher confidence threshold
-                    nmsRadius: 20
+                    decodingMethod: 'single-person'
                 });
                 
                 // Update performance
                 updatePerformance();
                 
-                // Process poses ONLY if high confidence
-                if (poses.length > 0 && poses[0].score > 0.7) {
+                // Process poses
+                if (poses.length > 0) {
                     processPose(poses[0]);
-                } else {
-                    // Show low confidence warning
-                    if (poses.length > 0 && poses[0].score < 0.7) {
-                        overlayInfo.textContent = '⚠️ Low tracking confidence - adjust position';
-                    }
                 }
                 
                 // Draw everything
@@ -873,56 +866,28 @@
         }
 
         function calculateAdvancedWristVelocity(wrist) {
-            if (poseHistory.length < 5) return 0; // Need more data points
+            if (poseHistory.length < 3) return 0;
             
-            // Get last 5 wrist positions for smooth calculation
-            const positions = [];
-            for (let i = Math.max(0, poseHistory.length - 5); i < poseHistory.length; i++) {
-                const wristPoint = poseHistory[i].pose.keypoints[10];
-                if (wristPoint && wristPoint.score > 0.7) { // Only high confidence points
-                    positions.push({
-                        x: wristPoint.position.x,
-                        y: wristPoint.position.y,
-                        time: poseHistory[i].timestamp
-                    });
-                }
-            }
+            const current = wrist.position;
+            const prev1 = poseHistory[poseHistory.length - 2].pose.keypoints[10].position;
+            const prev2 = poseHistory[poseHistory.length - 3].pose.keypoints[10].position;
             
-            if (positions.length < 3) return 0;
+            // Calculate velocity with acceleration consideration
+            const velocity1 = Math.sqrt(
+                Math.pow(current.x - prev1.x, 2) + 
+                Math.pow(current.y - prev1.y, 2)
+            );
             
-            // Calculate velocity using multiple points for accuracy
-            let totalVelocity = 0;
-            let validCalculations = 0;
+            const velocity2 = Math.sqrt(
+                Math.pow(prev1.x - prev2.x, 2) + 
+                Math.pow(prev1.y - prev2.y, 2)
+            );
             
-            for (let i = 1; i < positions.length; i++) {
-                const distance = Math.sqrt(
-                    Math.pow(positions[i].x - positions[i-1].x, 2) + 
-                    Math.pow(positions[i].y - positions[i-1].y, 2)
-                );
-                
-                const timeDiff = (positions[i].time - positions[i-1].time) / 1000; // Convert to seconds
-                
-                if (timeDiff > 0) {
-                    const velocity = distance / timeDiff; // pixels per second
-                    totalVelocity += velocity;
-                    validCalculations++;
-                }
-            }
+            // Smooth velocity calculation
+            const smoothedVelocity = (velocity1 + velocity2) / 2;
             
-            if (validCalculations === 0) return 0;
-            
-            const avgVelocity = totalVelocity / validCalculations;
-            
-            // Convert to realistic golf swing speed (calibrated for camera distance)
-            // Assuming camera is 6-8 feet away, this conversion gives realistic speeds
-            const velocityMph = (avgVelocity * 0.008); // Calibrated conversion factor
-            
-            // Store in history for smoothing
-            velocityHistory.push(velocityMph);
-            if (velocityHistory.length > 10) velocityHistory.shift();
-            
-            // Return smoothed velocity
-            return velocityHistory.reduce((sum, v) => sum + v, 0) / velocityHistory.length;
+            // Convert to approximate mph
+            return smoothedVelocity * 0.015;
         }
 
         function calculateSwingPlane(shoulder, elbow, wrist) {
@@ -951,105 +916,65 @@
         function detectAdvancedSwingPhase(velocity, shoulderAngle, hipAngle) {
             const currentTime = Date.now();
             
-            // More accurate swing detection with validation
-            if (velocity > 12 && !swingData.swingStarted && shoulderAngle > 15) {
-                // Validate this is actually a swing start
-                const recentVelocities = velocityHistory.slice(-3);
-                const isIncreasing = recentVelocities.length >= 2 && 
-                    recentVelocities[recentVelocities.length - 1] > recentVelocities[0];
-                
-                if (isIncreasing) {
-                    swingData.swingStarted = true;
-                    swingData.swingStartTime = currentTime;
-                    swingData.swingPhase = 'backswing';
-                    swingPhase.textContent = '⬆️ BACKSWING';
-                    swingPhase.classList.add('active');
-                    updateStatus('🎯 Backswing detected! Tracking swing...', 'success');
-                }
+            // Advanced swing detection logic
+            if (velocity > 8 && !swingData.swingStarted) {
+                swingData.swingStarted = true;
+                swingData.swingStartTime = currentTime;
+                swingData.swingPhase = 'backswing';
+                swingPhase.textContent = '⬆️ BACKSWING';
+                swingPhase.classList.add('active');
+                updateStatus('🎯 Backswing detected! Tracking swing...', 'success');
             }
             
             if (swingData.swingStarted) {
                 const timeSinceStart = currentTime - swingData.swingStartTime;
                 
-                // More accurate phase detection
-                if (velocity > 25 && timeSinceStart > 400) {
+                // Advanced phase detection
+                if (velocity > 20 && timeSinceStart > 300) {
                     swingData.swingPhase = 'impact';
                     swingPhase.textContent = '💥 IMPACT ZONE';
-                    updateStatus('💥 Impact detected!', 'success');
-                } else if (velocity > 18 && shoulderAngle > swingData.backswingPeak && timeSinceStart > 200) {
+                } else if (velocity > 12 && shoulderAngle > swingData.backswingPeak) {
                     swingData.swingPhase = 'downswing';
                     swingPhase.textContent = '⬇️ DOWNSWING';
                     swingData.backswingPeak = shoulderAngle;
-                    updateStatus('⬇️ Downswing in progress...', 'success');
-                } else if (timeSinceStart > 2000 && velocity < 8) {
+                } else if (timeSinceStart > 1500 && velocity < 5) {
                     swingData.swingPhase = 'followthrough';
                     swingPhase.textContent = '🔄 FOLLOW-THROUGH';
-                    updateStatus('🔄 Follow-through completed', 'success');
                     
                     // Complete swing analysis
-                    setTimeout(() => completeAdvancedSwingAnalysis(), 1500);
-                }
-                
-                // Auto-reset if swing takes too long (likely false detection)
-                if (timeSinceStart > 5000) {
-                    resetSwingData();
-                    updateStatus('⚠️ Swing timeout - ready for new swing', 'warning');
+                    setTimeout(() => completeAdvancedSwingAnalysis(), 2000);
                 }
             }
         }
 
         function calculateAdvancedMetrics() {
-            if (swingData.shoulderRotation.length === 0 || velocityHistory.length === 0) return;
+            if (swingData.shoulderRotation.length === 0) return;
             
-            // Get reliable data points only
-            const validVelocities = velocityHistory.filter(v => v > 0 && v < 150); // Realistic range
-            if (validVelocities.length === 0) return;
-            
-            // More accurate calculations
-            const maxVelocity = Math.max(...validVelocities);
-            const avgVelocity = validVelocities.reduce((a, b) => a + b, 0) / validVelocities.length;
-            
-            // Club speed - based on peak wrist velocity with realistic calibration
-            const clubSpeedMph = Math.min(maxVelocity * 8, 120); // Max realistic club speed
-            
-            // Ball speed - using actual golf physics (smash factor 1.4-1.5)
-            const smashFactor = 1.45;
-            const ballSpeedMph = clubSpeedMph * smashFactor;
-            
-            // Distance - using ball speed to distance formula
-            // Distance = (Ball Speed^2 * sin(2 * launch angle)) / gravity
-            // Simplified for carry distance
-            const launchAngle = 12; // Typical driver launch angle in degrees
-            const carryFactor = 2.3; // Simplified carry calculation
-            const distanceYards = Math.min(ballSpeedMph * carryFactor, 350); // Max realistic distance
-            
-            // Shoulder turn - get maximum rotation
+            // Advanced calculations
             const maxShoulderTurn = Math.max(...swingData.shoulderRotation);
+            const avgVelocity = velocityHistory.reduce((a, b) => a + b, 0) / velocityHistory.length || 0;
             
-            // Tempo calculation - more accurate timing
-            let tempoRatio = 0;
-            if (swingData.swingStarted && swingData.swingStartTime) {
-                const totalTime = (Date.now() - swingData.swingStartTime) / 1000;
-                tempoRatio = Math.min(totalTime, 3.0); // Cap at 3 seconds
-            }
+            // Club speed with physics-based calculation
+            const clubSpeedMph = Math.min(avgVelocity * 6, 130);
+            const ballSpeedMph = clubSpeedMph * 1.48; // Smash factor
+            const distanceYards = ballSpeedMph * 2.3;
             
-            // Consistency based on velocity variance
+            // Tempo calculation (backswing to downswing ratio)
+            const tempoRatio = swingData.shoulderRotation.length > 0 ? 
+                (Date.now() - swingData.swingStartTime) / 1000 : 0;
+            
+            // Consistency based on recent swings
             const consistencyScore = calculateConsistency();
             
-            // Validate and cap all metrics to realistic ranges
-            const metrics = {
-                clubSpeed: Math.max(0, Math.min(clubSpeedMph, 120)),
-                ballSpeed: Math.max(0, Math.min(ballSpeedMph, 180)),
-                distance: Math.max(0, Math.min(distanceYards, 350)),
-                shoulderTurn: Math.max(0, Math.min(maxShoulderTurn, 90)),
-                tempo: Math.max(0.5, Math.min(tempoRatio, 3.0)),
-                consistency: Math.max(0, Math.min(consistencyScore, 100))
+            // Update metrics
+            swingData.calculatedMetrics = {
+                clubSpeed: clubSpeedMph,
+                ballSpeed: ballSpeedMph,
+                distance: distanceYards,
+                shoulderTurn: maxShoulderTurn,
+                tempo: tempoRatio,
+                consistency: consistencyScore
             };
-            
-            // Only update if we have reasonable values
-            if (metrics.clubSpeed > 5) { // Minimum swing speed to be valid
-                swingData.calculatedMetrics = metrics;
-            }
         }
 
         function calculateConsistency() {
@@ -1149,7 +1074,7 @@
 
         function drawPoseAdvanced(pose) {
             const keypoints = pose.keypoints;
-            const minConfidence = 0.7; // Higher confidence threshold
+            const minConfidence = 0.5;
             
             // Draw skeleton connections
             const connections = [
@@ -1159,23 +1084,13 @@
             ];
             
             ctx.strokeStyle = '#0ea5e9';
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 3;
             
             connections.forEach(([i, j]) => {
                 const kp1 = keypoints[i];
                 const kp2 = keypoints[j];
                 
                 if (kp1.score > minConfidence && kp2.score > minConfidence) {
-                    // Color-code based on confidence
-                    const avgConfidence = (kp1.score + kp2.score) / 2;
-                    if (avgConfidence > 0.9) {
-                        ctx.strokeStyle = '#10b981'; // High confidence - green
-                    } else if (avgConfidence > 0.8) {
-                        ctx.strokeStyle = '#0ea5e9'; // Good confidence - blue
-                    } else {
-                        ctx.strokeStyle = '#f59e0b'; // Lower confidence - yellow
-                    }
-                    
                     ctx.beginPath();
                     ctx.moveTo(kp1.position.x, kp1.position.y);
                     ctx.lineTo(kp2.position.x, kp2.position.y);
@@ -1183,42 +1098,28 @@
                 }
             });
             
-            // Draw keypoints with confidence indicators
+            // Draw keypoints
             keypoints.forEach((keypoint, i) => {
                 if (keypoint.score > minConfidence) {
-                    // Size and color based on confidence and importance
-                    let radius = 6;
-                    let fillColor = '#0ea5e9';
-                    let strokeColor = '#fff';
-                    
-                    if ([5, 6, 9, 10].includes(i)) { // Shoulders and wrists (most important)
-                        radius = 8;
-                        fillColor = keypoint.score > 0.9 ? '#dc2626' : '#f59e0b';
-                        strokeColor = '#fff';
+                    // Color code important joints
+                    if ([5, 6, 9, 10].includes(i)) { // Shoulders and wrists
+                        ctx.fillStyle = '#dc2626';
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 2;
                     } else if ([11, 12].includes(i)) { // Hips
-                        radius = 7;
-                        fillColor = keypoint.score > 0.9 ? '#059669' : '#10b981';
-                        strokeColor = '#fff';
+                        ctx.fillStyle = '#059669';
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 2;
+                    } else {
+                        ctx.fillStyle = '#0ea5e9';
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 1;
                     }
-                    
-                    // Draw confidence ring
-                    ctx.strokeStyle = strokeColor;
-                    ctx.lineWidth = 2;
-                    ctx.fillStyle = fillColor;
                     
                     ctx.beginPath();
-                    ctx.arc(keypoint.position.x, keypoint.position.y, radius, 0, 2 * Math.PI);
+                    ctx.arc(keypoint.position.x, keypoint.position.y, 6, 0, 2 * Math.PI);
                     ctx.fill();
                     ctx.stroke();
-                    
-                    // Draw confidence score for important points
-                    if ([9, 10].includes(i) && keypoint.score > 0.8) { // Wrists
-                        ctx.fillStyle = '#fff';
-                        ctx.font = '10px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.fillText(Math.round(keypoint.score * 100) + '%', 
-                                   keypoint.position.x, keypoint.position.y - 15);
-                    }
                 }
             });
         }
