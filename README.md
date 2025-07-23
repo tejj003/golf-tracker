@@ -1,32 +1,44 @@
-# 🏌️ Golf Shot Tracker
+# 🏌️ Golf Pro Analyzer
 
-An AI-powered golf swing analysis website that uses computer vision to track and analyze your golf shots in real-time. Get instant feedback on your swing mechanics, ball speed, tempo, and overall technique using just your camera.
+An advanced AI-powered golf swing analysis tool that uses TensorFlow.js and PoseNet to provide professional-grade swing analysis in real-time. Get instant feedback on your swing mechanics, club speed, ball speed, and technique using just your camera.
 
 ## ✨ Features
 
-### 🎯 Real-time Swing Analysis
-- **Pose Detection**: Advanced pose estimation using MediaPipe
-- **Swing Path Tracking**: Visualize your club and body movement
-- **Phase Detection**: Automatic identification of swing phases (address, takeaway, backswing, downswing, impact, follow-through)
+### 🤖 Advanced AI Analysis
+- **TensorFlow.js + PoseNet**: Professional-grade pose estimation
+- **Real-time Processing**: 30fps analysis with smoothing algorithms
+- **Professional Calibration**: Set reference posture for accurate analysis
+- **Swing History Tracking**: Store and analyze multiple swings
 
-### 📊 Comprehensive Metrics
-- **Ball Speed Estimation**: Calculate ball velocity after impact
-- **Club Head Speed**: Measure your club head speed throughout the swing
-- **Swing Tempo**: Analyze backswing and downswing timing
-- **Impact Angle**: Assess your angle of attack at impact
-- **Swing Plane Analysis**: Track swing plane consistency and angle
+### 📊 Professional Metrics
+- **Club Speed**: Physics-based calculation with smash factor
+- **Ball Speed**: Real golf industry formulas (Club Speed × 1.48)
+- **Distance Estimation**: Accurate carry distance calculation
+- **Swing Tempo**: Backswing to downswing timing analysis
+- **Consistency Score**: Multi-swing variance analysis
+- **Shoulder Turn**: Calibrated rotation measurement
 
-### 📈 Performance Scoring
-- **Overall Swing Score**: Comprehensive rating out of 100
-- **Individual Metrics**: Timing, balance, consistency, power, and tempo scores
-- **Comparative Analysis**: Compare against professional benchmarks
-- **Progress Tracking**: Monitor improvement over time
+### 🎯 Advanced Swing Analysis
+- **Swing Plane Angle**: Professional swing plane calculation
+- **Hip Turn Sequence**: Body rotation analysis
+- **Weight Transfer**: Balance and weight shift tracking
+- **Wrist Release Timing**: Impact timing optimization
+- **Follow-through Arc**: Complete swing path analysis
+- **Balance Score**: Overall stability assessment
 
-### 🎨 Interactive Visualizations
-- **Real-time Pose Overlay**: See your skeleton tracking on live video
-- **Swing Path Charts**: Line graphs showing club and wrist trajectories
-- **Performance Radar**: Spider chart displaying all performance metrics
-- **Progress Analytics**: Historical data visualization
+## 🚀 Quick Start
+
+### Option 1: GitHub Pages (Recommended)
+1. **Visit**: `https://YOUR-USERNAME.github.io/golf-swing-tracker`
+2. **Allow camera permissions**
+3. **Calibrate your posture**
+4. **Start analyzing your swing!**
+
+### Option 2: Local Usage
+1. **Download**: Clone or download this repository
+2. **Open**: Double-click `index.html`
+3. **Allow camera permissions**
+4. **Start tracking!**
 
 ### 💡 AI-Powered Insights
 - **Personalized Feedback**: Custom analysis based on your swing data
