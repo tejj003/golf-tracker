@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Golf Pro Tracker - Mobile Optimized</title>
+    
+    <!-- Optimized AI libraries for mobile -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.2/dist/posenet.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        .mobile-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .video-section {
+            flex: 1;
+            position: relative;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+        }
+
+        .video-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0;
+        }
+
+        .overlay-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .status-indicator {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-indicator.ready { background: rgba(34, 197, 94, 0.9); }
+        .status-indicator.tracking { background: rgba(239, 68, 68, 0.9); }
+        .status-indicator.analyzing { background: rgba(245, 158, 11, 0.9); }
+
+        .confidence-display {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 6px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            backdrop-filter: blur(10px);
+        }
+
+        .swing-phase-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(239, 68, 68, 0.95);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-weight: 900;
+            font-size: 16px;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        .swing-phase-display.active { display: block; }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.9; }
+        }
+
+        .metrics-section {
+            flex: 0 0 40vh;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            padding: 15px;
+            overflow-y: auto;
+            border-top: 3px solid #475569;
+        }
+
+        .controls-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            touch-action: manipulation;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.6);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #6b7280, #374151);
+            color: white;
+            border: 1px solid #9ca3af;
+        }
+
+        .btn-secondary:active {
+            transform: scale(0.95);
+            background: linear-gradient(45deg, #374151, #1f2937);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #374151, #1f2937);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid transparent;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        .metric-card.updated {
+            border-color: #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 900;
+            color: #3b82f6;
+            margin-bottom: 5px;
+            font-family: monospace;
+        }
+
+        .metric-label {
+            font-size: 10px;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .analysis-section {
+            background: linear-gradient(135deg, #374151, #1f2937);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            color: #3b82f6;
+            margin-bottom: 10px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .analysis-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #4b5563;
+        }
+
+        .analysis-item:last-child {
+            border-bottom: none;
+        }
+
+        .analysis-label {
+            font-weight: 600;
+            color: #e5e7eb;
+        }
+
+        .analysis-value {
+            color: #3b82f6;
+            font-weight: 700;
+        }
+
+        .tips-section {
+            background: linear-gradient(135deg, #1f2937, #111827);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .tips-section strong {
+            color: #fbbf24;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .mobile-container {
+                height: 100vh;
+                height: 100dvh; /* Use dynamic viewport height */
+            }
+            
+            .video-section {
+                min-height: 50vh;
+            }
+            
+            .metrics-section {
+                flex: 1;
+                min-height: 50vh;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .btn {
+                padding: 14px 18px;
+                font-size: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .controls-header {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            
+            .metric-card {
+                padding: 12px;
+            }
+            
+            .metric-value {
+                font-size: 20px;
+            }
+        }
+
+        /* Landscape orientation optimizations */
+        @media (orientation: landscape) and (max-height: 600px) {
+            .mobile-container {
+                flex-direction: row;
+            }
+            
+            .video-section {
+                flex: 2;
+                min-height: 100vh;
+            }
+            
+            .metrics-section {
+                flex: 1;
+                min-height: 100vh;
+                border-top: none;
+                border-left: 3px solid #475569;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="mobile-container">
+        <!-- Video Section -->
+        <div class="video-section">
+            <canvas id="canvas"></canvas>
+            
+            <div class="overlay-controls">
+                <div id="statusIndicator" class="status-indicator">🤖 Loading AI...</div>
+                <div id="confidenceDisplay" class="confidence-display">0%</div>
+            </div>
+            
+            <div id="swingPhaseDisplay" class="swing-phase-display">
+                📍 TRACKING
+            </div>
+        </div>
+        
+        <!-- Metrics Section -->
+        <div class="metrics-section">
+            <div class="controls-header">
+                <button id="startBtn" class="btn btn-primary">🎥 Start Camera</button>
+                <button id="analyzeBtn" class="btn btn-secondary" disabled>🎯 Analyze</button>
+            </div>
+            
+            <!-- Core Metrics -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div id="clubSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Club Speed (mph)</div>
+                </div>
+                <div class="metric-card">
+                    <div id="ballSpeed" class="metric-value">0</div>
+                    <div class="metric-label">Ball Speed (mph)</div>
+                </div>
+                <div class="metric-card">
+                    <div id="distance" class="metric-value">0</div>
+                    <div class="metric-label">Distance (yds)</div>
+                </div>
+                <div class="metric-card">
+                    <div id="tempo" class="metric-value">0.0s</div>
+                    <div class="metric-label">Swing Tempo</div>
+                </div>
+            </div>
+            
+            <!-- Analysis Section -->
+            <div class="analysis-section">
+                <div class="section-title">📊 Swing Analysis</div>
+                <div class="analysis-grid">
+                    <div class="analysis-item">
+                        <span class="analysis-label">Shoulder Turn:</span>
+                        <span id="shoulderTurn" class="analysis-value">--</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="analysis-label">Hip Rotation:</span>
+                        <span id="hipRotation" class="analysis-value">--</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="analysis-label">Wrist Speed:</span>
+                        <span id="wristSpeed" class="analysis-value">--</span>
+                    </div>
+                    <div class="analysis-item">
+                        <span class="analysis-label">Balance:</span>
+                        <span id="balance" class="analysis-value">--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tips Section -->
+            <div class="tips-section">
+                <strong>📱 Mobile Tips:</strong>
+                • Hold phone horizontally (landscape)<br>
+                • Place phone 4-6 feet away<br>
+                • Ensure full body is visible<br>
+                • Use good lighting (avoid shadows)<br>
+                • Tap screen to focus camera
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mobile-optimized variables
+        let video, canvas, ctx;
+        let net;
+        let poses = [];
+        let isAnalyzing = false;
+        let modelLoaded = false;
+        
+        // Mobile-specific settings
+        const MOBILE_CONFIG = {
+            videoWidth: 480,
+            videoHeight: 360,
+            canvasScale: window.devicePixelRatio || 1,
+            minConfidence: 0.6, // Slightly lower for mobile
+            targetFPS: 15 // Lower FPS for better mobile performance
+        };
+        
+        // Swing analysis data
+        let swingData = {
+            history: [],
+            isTracking: false,
+            startTime: 0,
+            phase: 'setup',
+            velocities: [],
+            positions: [],
+            metrics: {
+                clubSpeed: 0,
+                ballSpeed: 0,
+                distance: 0,
+                tempo: 0,
+                shoulderTurn: 0,
+                hipRotation: 0,
+                wristSpeed: 0,
+                balance: 0
+            }
+        };
+        
+        // UI elements
+        let startBtn, analyzeBtn, statusIndicator, confidenceDisplay, swingPhaseDisplay;
+        let clubSpeedEl, ballSpeedEl, distanceEl, tempoEl;
+        let shoulderTurnEl, hipRotationEl, wristSpeedEl, balanceEl;
+
+        // Initialize app
+        async function init() {
+            console.log('🚀 Initializing Mobile Golf Tracker...');
+            
+            // Setup canvas
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            // Set canvas size for mobile
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('orientationchange', () => {
+                setTimeout(resizeCanvas, 100);
+            });
+            
+            // Initialize UI
+            initializeUI();
+            
+            // Load AI models
+            await loadAIModels();
+        }
+
+        function resizeCanvas() {
+            const container = document.querySelector('.video-section');
+            const rect = container.getBoundingClientRect();
+            
+            // Set canvas size to container size
+            canvas.width = rect.width * MOBILE_CONFIG.canvasScale;
+            canvas.height = rect.height * MOBILE_CONFIG.canvasScale;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            
+            // Scale context for high DPI displays
+            ctx.scale(MOBILE_CONFIG.canvasScale, MOBILE_CONFIG.canvasScale);
+        }
+
+        function initializeUI() {
+            startBtn = document.getElementById('startBtn');
+            analyzeBtn = document.getElementById('analyzeBtn');
+            statusIndicator = document.getElementById('statusIndicator');
+            confidenceDisplay = document.getElementById('confidenceDisplay');
+            swingPhaseDisplay = document.getElementById('swingPhaseDisplay');
+            
+            clubSpeedEl = document.getElementById('clubSpeed');
+            ballSpeedEl = document.getElementById('ballSpeed');
+            distanceEl = document.getElementById('distance');
+            tempoEl = document.getElementById('tempo');
+            shoulderTurnEl = document.getElementById('shoulderTurn');
+            hipRotationEl = document.getElementById('hipRotation');
+            wristSpeedEl = document.getElementById('wristSpeed');
+            balanceEl = document.getElementById('balance');
+            
+            startBtn.addEventListener('click', toggleCamera);
+            analyzeBtn.addEventListener('click', toggleAnalysis);
+            
+            updateStatus('🤖 Loading AI models...', 'loading');
+        }
+
+        async function loadAIModels() {
+            try {
+                updateStatus('🧠 Loading TensorFlow...', 'loading');
+                
+                await tf.ready();
+                console.log('✅ TensorFlow.js loaded');
+                
+                updateStatus('🏃 Loading PoseNet...', 'loading');
+                
+                // Mobile-optimized PoseNet configuration
+                net = await posenet.load({
+                    architecture: 'MobileNetV1', // Better for mobile
+                    outputStride: 16,
+                    inputResolution: { width: MOBILE_CONFIG.videoWidth, height: MOBILE_CONFIG.videoHeight },
+                    multiplier: 0.75, // Balanced accuracy/performance
+                    quantBytes: 2 // Smaller model size
+                });
+                
+                console.log('✅ PoseNet loaded');
+                modelLoaded = true;
+                
+                updateStatus('✅ AI Ready!', 'ready');
+                startBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('❌ AI loading failed:', error);
+                updateStatus('❌ AI Load Failed', 'error');
+            }
+        }
+
+        async function toggleCamera() {
+            if (video) {
+                stopCamera();
+            } else {
+                await startCamera();
+            }
+        }
+
+        async function startCamera() {
+            try {
+                updateStatus('📷 Starting camera...', 'loading');
+                
+                // Mobile-optimized camera constraints
+                const constraints = {
+                    video: {
+                        width: { ideal: MOBILE_CONFIG.videoWidth },
+                        height: { ideal: MOBILE_CONFIG.videoHeight },
+                        facingMode: 'user', // Front camera
+                        frameRate: { ideal: MOBILE_CONFIG.targetFPS },
+                        focusMode: 'continuous'
+                    }
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                video = document.createElement('video');
+                video.srcObject = stream;
+                video.width = MOBILE_CONFIG.videoWidth;
+                video.height = MOBILE_CONFIG.videoHeight;
+                video.autoplay = true;
+                video.playsInline = true; // Important for iOS
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    startDetection();
+                    startBtn.textContent = '⏹️ Stop';
+                    analyzeBtn.disabled = false;
+                    updateStatus('📹 Camera Active', 'ready');
+                };
+                
+            } catch (error) {
+                console.error('Camera error:', error);
+                let errorMsg = 'Camera failed: ';
+                if (error.name === 'NotAllowedError') {
+                    errorMsg = 'Camera permission denied';
+                } else if (error.name === 'NotFoundError') {
+                    errorMsg = 'No camera found';
+                } else {
+                    errorMsg = 'Camera access error';
+                }
+                updateStatus('❌ ' + errorMsg, 'error');
+            }
+        }
+
+        function stopCamera() {
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video = null;
+            }
+            
+            startBtn.textContent = '🎥 Start Camera';
+            analyzeBtn.disabled = true;
+            isAnalyzing = false;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            updateStatus('📷 Camera stopped', 'ready');
+        }
+
+        async function startDetection() {
+            if (!video || !modelLoaded) return;
+            
+            try {
+                // Mobile-optimized pose estimation
+                const poses = await net.estimatePoses(video, {
+                    flipHorizontal: true, // Mirror for front camera
+                    decodingMethod: 'single-person',
+                    scoreThreshold: MOBILE_CONFIG.minConfidence,
+                    nmsRadius: 20
+                });
+                
+                // Process poses
+                if (poses.length > 0 && poses[0].score > MOBILE_CONFIG.minConfidence) {
+                    processPose(poses[0]);
+                    confidenceDisplay.textContent = Math.round(poses[0].score * 100) + '%';
+                } else {
+                    confidenceDisplay.textContent = '0%';
+                }
+                
+                // Draw frame
+                drawFrame(poses);
+                
+                // Continue detection
+                setTimeout(() => requestAnimationFrame(startDetection), 1000 / MOBILE_CONFIG.targetFPS);
+                
+            } catch (error) {
+                console.error('Detection error:', error);
+                setTimeout(() => requestAnimationFrame(startDetection), 100);
+            }
+        }
+
+        function processPose(pose) {
+            const timestamp = Date.now();
+            
+            // Store pose data
+            swingData.history.push({
+                pose: pose,
+                timestamp: timestamp
+            });
+            
+            // Keep only recent data (last 3 seconds)
+            const cutoff = timestamp - 3000;
+            swingData.history = swingData.history.filter(entry => entry.timestamp > cutoff);
+            
+            // Analyze swing if active
+            if (isAnalyzing && swingData.history.length > 3) {
+                analyzeSwing(pose, timestamp);
+            }
+        }
+
+        function analyzeSwing(pose, timestamp) {
+            const keypoints = pose.keypoints;
+            
+            // Get key body parts with confidence check
+            const leftShoulder = keypoints[5];
+            const rightShoulder = keypoints[6];
+            const leftWrist = keypoints[9];
+            const rightWrist = keypoints[10];
+            const leftHip = keypoints[11];
+            const rightHip = keypoints[12];
+            
+            // Only proceed if we have high confidence key points
+            if (!leftShoulder || !rightShoulder || !rightWrist || 
+                leftShoulder.score < 0.6 || rightShoulder.score < 0.6 || rightWrist.score < 0.6) {
+                return;
+            }
+            
+            // Calculate wrist velocity (mobile-optimized)
+            const wristVelocity = calculateMobileWristVelocity(rightWrist, timestamp);
+            
+            // Calculate shoulder turn
+            const shoulderAngle = calculateShoulderTurn(leftShoulder, rightShoulder);
+            
+            // Calculate hip rotation
+            let hipAngle = 0;
+            if (leftHip && rightHip && leftHip.score > 0.5 && rightHip.score > 0.5) {
+                hipAngle = calculateHipRotation(leftHip, rightHip);
+            }
+            
+            // Detect swing phases
+            detectSwingPhase(wristVelocity, shoulderAngle, timestamp);
+            
+            // Calculate metrics
+            calculateMobileMetrics(wristVelocity, shoulderAngle, hipAngle);
+            
+            // Update display
+            updateMetricsDisplay();
+        }
+
+        function calculateMobileWristVelocity(wrist, timestamp) {
+            const recentPositions = [];
+            
+            // Get recent wrist positions
+            for (let i = Math.max(0, swingData.history.length - 5); i < swingData.history.length; i++) {
+                const entry = swingData.history[i];
+                const wristPoint = entry.pose.keypoints[10];
+                
+                if (wristPoint && wristPoint.score > 0.6) {
+                    recentPositions.push({
+                        x: wristPoint.position.x,
+                        y: wristPoint.position.y,
+                        time: entry.timestamp
+                    });
+                }
+            }
+            
+            if (recentPositions.length < 2) return 0;
+            
+            // Calculate average velocity over recent positions
+            let totalVelocity = 0;
+            let count = 0;
+            
+            for (let i = 1; i < recentPositions.length; i++) {
+                const dx = recentPositions[i].x - recentPositions[i-1].x;
+                const dy = recentPositions[i].y - recentPositions[i-1].y;
+                const dt = (recentPositions[i].time - recentPositions[i-1].time) / 1000;
+                
+                if (dt > 0) {
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const velocity = distance / dt;
+                    totalVelocity += velocity;
+                    count++;
+                }
+            }
+            
+            if (count === 0) return 0;
+            
+            const avgVelocity = totalVelocity / count;
+            
+            // Mobile-calibrated conversion (accounts for smaller screen/camera distance)
+            const velocityMph = avgVelocity * 0.012; // Calibrated for mobile
+            
+            // Store and smooth
+            swingData.velocities.push(velocityMph);
+            if (swingData.velocities.length > 8) swingData.velocities.shift();
+            
+            return swingData.velocities.reduce((sum, v) => sum + v, 0) / swingData.velocities.length;
+        }
+
+        function calculateShoulderTurn(leftShoulder, rightShoulder) {
+            const dx = rightShoulder.position.x - leftShoulder.position.x;
+            const dy = rightShoulder.position.y - leftShoulder.position.y;
+            
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            return Math.abs(angle);
+        }
+
+        function calculateHipRotation(leftHip, rightHip) {
+            const dx = rightHip.position.x - leftHip.position.x;
+            const dy = rightHip.position.y - leftHip.position.y;
+            
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            return Math.abs(angle);
+        }
+
+        function detectSwingPhase(velocity, shoulderAngle, timestamp) {
+            if (!swingData.isTracking) {
+                // Start tracking if we see significant movement
+                if (velocity > 15 && shoulderAngle > 20) {
+                    swingData.isTracking = true;
+                    swingData.startTime = timestamp;
+                    swingData.phase = 'backswing';
+                    showSwingPhase('⬆️ BACKSWING');
+                }
+            } else {
+                const elapsed = timestamp - swingData.startTime;
+                
+                if (velocity > 30 && elapsed > 400) {
+                    swingData.phase = 'impact';
+                    showSwingPhase('💥 IMPACT');
+                } else if (velocity > 20 && elapsed > 200) {
+                    swingData.phase = 'downswing';
+                    showSwingPhase('⬇️ DOWNSWING');
+                } else if (elapsed > 2500 || velocity < 8) {
+                    swingData.phase = 'followthrough';
+                    showSwingPhase('🔄 FOLLOW-THROUGH');
+                    
+                    // Complete swing
+                    setTimeout(() => {
+                        completeSwing();
+                    }, 1500);
+                }
+                
+                // Auto-reset if too long
+                if (elapsed > 5000) {
+                    resetSwing();
+                }
+            }
+        }
+
+        function calculateMobileMetrics(velocity, shoulderAngle, hipAngle) {
+            // Mobile-optimized realistic calculations
+            const maxVelocity = Math.max(...swingData.velocities.slice(-5));
+            
+            // Club speed (mobile-calibrated)
+            const clubSpeed = Math.min(maxVelocity * 6, 115);
+            
+            // Ball speed (realistic smash factor)
+            const ballSpeed = clubSpeed * 1.4;
+            
+            // Distance (simplified formula)
+            const distance = Math.min(ballSpeed * 2.2, 320);
+            
+            // Tempo
+            const tempo = swingData.isTracking ? 
+                (Date.now() - swingData.startTime) / 1000 : 0;
+            
+            // Update metrics
+            swingData.metrics = {
+                clubSpeed: Math.round(clubSpeed),
+                ballSpeed: Math.round(ballSpeed),
+                distance: Math.round(distance),
+                tempo: Math.round(tempo * 10) / 10,
+                shoulderTurn: Math.round(shoulderAngle),
+                hipRotation: Math.round(hipAngle),
+                wristSpeed: Math.round(maxVelocity),
+                balance: swingData.isTracking ? 85 : 0
+            };
+        }
+
+        function updateMetricsDisplay() {
+            const m = swingData.metrics;
+            
+            // Update with animation
+            animateValue(clubSpeedEl, m.clubSpeed);
+            animateValue(ballSpeedEl, m.ballSpeed);
+            animateValue(distanceEl, m.distance);
+            animateValue(tempoEl, m.tempo + 's');
+            animateValue(shoulderTurnEl, m.shoulderTurn + '°');
+            animateValue(hipRotationEl, m.hipRotation + '°');
+            animateValue(wristSpeedEl, m.wristSpeed + ' px/s');
+            animateValue(balanceEl, m.balance + '%');
+        }
+
+        function animateValue(element, value) {
+            if (element.textContent !== value.toString()) {
+                element.textContent = value;
+                element.parentElement.classList.add('updated');
+                setTimeout(() => {
+                    element.parentElement.classList.remove('updated');
+                }, 600);
+            }
+        }
+
+        function showSwingPhase(phase) {
+            swingPhaseDisplay.textContent = phase;
+            swingPhaseDisplay.classList.add('active');
+            updateStatus('🎯 ' + phase, 'tracking');
+        }
+
+        function completeSwing() {
+            updateStatus('✅ Swing Complete!', 'ready');
+            setTimeout(() => {
+                resetSwing();
+            }, 2000);
+        }
+
+        function resetSwing() {
+            swingData.isTracking = false;
+            swingData.phase = 'setup';
+            swingPhaseDisplay.classList.remove('active');
+            
+            if (isAnalyzing) {
+                updateStatus('🎯 Ready for next swing', 'analyzing');
+            }
+        }
+
+        function toggleAnalysis() {
+            isAnalyzing = !isAnalyzing;
+            
+            if (isAnalyzing) {
+                analyzeBtn.textContent = '⏹️ Stop';
+                analyzeBtn.classList.remove('btn-secondary');
+                analyzeBtn.classList.add('btn-primary');
+                updateStatus('🎯 Analysis Active', 'analyzing');
+                resetSwing();
+            } else {
+                analyzeBtn.textContent = '🎯 Analyze';
+                analyzeBtn.classList.remove('btn-primary');
+                analyzeBtn.classList.add('btn-secondary');
+                resetSwing();
+                updateStatus('📹 Camera Active', 'ready');
+            }
+        }
+
+        function drawFrame(poses) {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width / MOBILE_CONFIG.canvasScale, canvas.height / MOBILE_CONFIG.canvasScale);
+            
+            // Draw video
+            if (video) {
+                ctx.drawImage(video, 0, 0, 
+                    canvas.width / MOBILE_CONFIG.canvasScale, 
+                    canvas.height / MOBILE_CONFIG.canvasScale);
+            }
+            
+            // Draw poses
+            if (poses.length > 0) {
+                drawPose(poses[0]);
+            }
+        }
+
+        function drawPose(pose) {
+            const keypoints = pose.keypoints;
+            const minConfidence = 0.6;
+            
+            // Scale factor for drawing
+            const scaleX = (canvas.width / MOBILE_CONFIG.canvasScale) / MOBILE_CONFIG.videoWidth;
+            const scaleY = (canvas.height / MOBILE_CONFIG.canvasScale) / MOBILE_CONFIG.videoHeight;
+            
+            // Draw skeleton
+            const connections = [
+                [5, 6], [5, 7], [7, 9], [6, 8], [8, 10], // Arms
+                [5, 11], [6, 12], [11, 12], // Torso
+                [11, 13], [13, 15], [12, 14], [14, 16] // Legs
+            ];
+            
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 3;
+            
+            connections.forEach(([i, j]) => {
+                const kp1 = keypoints[i];
+                const kp2 = keypoints[j];
+                
+                if (kp1.score > minConfidence && kp2.score > minConfidence) {
+                    ctx.beginPath();
+                    ctx.moveTo(kp1.position.x * scaleX, kp1.position.y * scaleY);
+                    ctx.lineTo(kp2.position.x * scaleX, kp2.position.y * scaleY);
+                    ctx.stroke();
+                }
+            });
+            
+            // Draw keypoints
+            keypoints.forEach((keypoint, i) => {
+                if (keypoint.score > minConfidence) {
+                    const x = keypoint.position.x * scaleX;
+                    const y = keypoint.position.y * scaleY;
+                    
+                    // Color important joints
+                    if ([5, 6, 9, 10].includes(i)) { // Shoulders and wrists
+                        ctx.fillStyle = '#ef4444';
+                        ctx.strokeStyle = '#fff';
+                    } else if ([11, 12].includes(i)) { // Hips
+                        ctx.fillStyle = '#10b981';
+                        ctx.strokeStyle = '#fff';
+                    } else {
+                        ctx.fillStyle = '#3b82f6';
+                        ctx.strokeStyle = '#fff';
+                    }
+                    
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function updateStatus(message, type) {
+            statusIndicator.textContent = message;
+            statusIndicator.className = 'status-indicator ' + type;
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', init);
+        
+        // Prevent zoom on double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
